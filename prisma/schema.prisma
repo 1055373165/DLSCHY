@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  githubUrl   String   @unique
+  name        String
+  owner       String
+  description String?
+  language    String?
+  stars       Int      @default(0)
+  size        Int      @default(0) // KB
+  isLarge     Boolean  @default(false) // 超大型项目标记
+
+  constellationMap Json? // 星座图数据
+  patterns         Json? // 识别到的重复模式
+  generatedCodeMap Json? // 代码生成标记
+
+  analyses      Analysis[]
+  conversations Conversation[]
+  progress      LearningProgress?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Analysis {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  type     AnalysisType
+  content  Json   // 分析结果（含 Mermaid 源码、调用链等）
+  metadata Json?  // 层级、深度等元数据
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, type])
+}
+
+enum AnalysisType {
+  META       // 元信息采集
+  SKELETON   // 骨架提取
+  DATAFLOW   // 数据流分析
+  DEPTH      // 深度穿透
+  DECISION   // 设计决策
+  PATH       // 学习路径
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title       String   @default("新对话")
+  focusModule String?  // 当前聚焦的模块/机制
+  messages    Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role     MessageRole
+  content  String      @db.Text
+  metadata Json?       // Mermaid 图、代码引用等结构化数据
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model LearningProgress {
+  id        String  @id @default(cuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  exploredModules     Json   @default("[]")  // 已探索的模块列表
+  currentFocus        String?                // 当前学习焦点
+  completedChallenges Json   @default("[]")  // 已完成的挑战
+  learningPath        Json?                  // AI 推荐的学习路径
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
