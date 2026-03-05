@@ -51,7 +51,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 // ─── Global concurrency limiter ─────────────────────
 // Prevents connection pool exhaustion when multiple endpoints
 // fire parallel GitHub API requests simultaneously.
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = getProxyUrl() ? 5 : 3;
 let inFlight = 0;
 const waitQueue: Array<() => void> = [];
 
@@ -82,8 +82,19 @@ function isConnectTimeout(error: unknown): boolean {
   return cause?.code === "UND_ERR_CONNECT_TIMEOUT";
 }
 
+// ─── In-memory response cache (for proxy mode where Next.js cache is bypassed)
+const responseCache = new Map<string, { data: unknown; expiry: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 export async function githubFetch<T>(path: string): Promise<T> {
   const url = `${GITHUB_API_BASE}${path}`;
+
+  // Check in-memory cache
+  const cached = responseCache.get(url);
+  if (cached && cached.expiry > Date.now()) {
+    return cached.data as T;
+  }
+
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -136,7 +147,10 @@ export async function githubFetch<T>(path: string): Promise<T> {
         );
       }
 
-      return response.json();
+      const data = await response.json();
+      // Cache successful responses in memory
+      responseCache.set(url, { data, expiry: Date.now() + CACHE_TTL_MS });
+      return data;
     } catch (error) {
       // Don't retry on known non-transient errors
       if (error instanceof GitHubError && error.status < 500) {
