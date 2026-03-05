@@ -25,7 +25,7 @@ export function NorthStarOverlay() {
 
   // Fetch graph data when overlay opens
   useEffect(() => {
-    if (!northStarOpen || graphData || graphLoading || !owner || !repo) return;
+    if (!northStarOpen || graphData || !owner || !repo) return;
 
     let cancelled = false;
     setGraphLoading(true);
@@ -36,14 +36,17 @@ export function NorthStarOverlay() {
         if (!cancelled && data.nodes) {
           setGraphData(data);
         }
-        if (!cancelled) setGraphLoading(false);
       })
       .catch(() => {
+        // ignore
+      })
+      .finally(() => {
         if (!cancelled) setGraphLoading(false);
       });
 
     return () => { cancelled = true; };
-  }, [northStarOpen, graphData, graphLoading, owner, repo, setGraphData, setGraphLoading]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [northStarOpen, graphData, owner, repo]);
 
   // Close on Escape
   useEffect(() => {
