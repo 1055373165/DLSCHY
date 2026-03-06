@@ -19,6 +19,8 @@ export interface HotPathResult {
   entryPoint: string;
   /** Brief structural summary for AI context */
   structureSummary: string;
+  /** All global dependency edges formed between analyzed files */
+  edges: Array<{ source: string; target: string }>;
 }
 
 export interface HotPathFile {
@@ -136,14 +138,33 @@ export async function analyzeHotPath(
       const imports = parseImports(content, filePath);
       for (const imp of imports) {
         const resolved = resolveImportPath(imp, filePath, fileIndex);
-        if (resolved && codeFiles.includes(resolved)) {
-          if (!outEdges.has(filePath)) outEdges.set(filePath, new Set());
-          outEdges.get(filePath)!.add(resolved);
+        if (resolved) {
+          let targets: string[] = [];
+          if (codeFiles.includes(resolved)) {
+            targets.push(resolved);
+          } else {
+            // It might be a directory module resolution (like in Go)
+            const prefix = resolved + "/";
+            targets = codeFiles.filter(f => f.startsWith(prefix) || f === resolved);
+          }
 
-          if (!inEdges.has(resolved)) inEdges.set(resolved, new Set());
-          inEdges.get(resolved)!.add(filePath);
+          for (const target of targets) {
+            if (!outEdges.has(filePath)) outEdges.set(filePath, new Set());
+            outEdges.get(filePath)!.add(target);
+
+            if (!inEdges.has(target)) inEdges.set(target, new Set());
+            inEdges.get(target)!.add(filePath);
+          }
         }
       }
+    }
+  }
+
+  // Extract all valid global edges
+  const globalEdges: Array<{ source: string; target: string }> = [];
+  for (const [source, targets] of outEdges) {
+    for (const target of targets) {
+      globalEdges.push({ source, target });
     }
   }
 
@@ -152,7 +173,7 @@ export async function analyzeHotPath(
   const iterations = 20;
   const n = codeFiles.length;
   if (n === 0) {
-    return { files: [], entryPoint: "", structureSummary: "No code files found." };
+    return { files: [], entryPoint: "", structureSummary: "No code files found.", edges: [] };
   }
 
   const scores = new Map<string, number>();
@@ -230,5 +251,5 @@ export async function analyzeHotPath(
   const topFiles = results.slice(0, 5).map((f) => `- \`${f.path}\`: ${f.reason} (被引用${f.inDegree}次, 引用${f.outDegree}个)`).join("\n");
   const structureSummary = `项目核心路径分析 (基于 import 图 PageRank):\n\n入口点: \`${entryPoint}\`\n\nTop-5 关键文件:\n${topFiles}`;
 
-  return { files: results, entryPoint, structureSummary };
+  return { files: results, entryPoint, structureSummary, edges: globalEdges };
 }

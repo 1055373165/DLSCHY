@@ -6,10 +6,6 @@ import {
   GitHubError,
   type FileContent,
 } from "@/lib/github/client";
-import {
-  buildDependencyGraph,
-  type FileContentProvider,
-} from "@/lib/analysis/graph-builder";
 import { analyzeHotPath } from "@/lib/analysis/hot-path";
 import type { ProjectGraph, GraphNode, GraphEdge, GraphCluster } from "@/types/graph";
 
@@ -70,92 +66,57 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Run hot path analysis to identify key files
-    const hotPathResult = await analyzeHotPath(fileIndex, getContent, 8);
+    // Get up to 100 most important files and their full global edge connections.
+    const hotPathResult = await analyzeHotPath(fileIndex, getContent, 100);
 
     if (abortController.signal.aborted) {
       clearTimeout(timeout);
       return NextResponse.json({ error: "Graph analysis timed out" }, { status: 504 });
     }
 
+    clearTimeout(timeout);
+
     const hotPathMap = new Map<string, number>();
     hotPathResult.files.forEach((f, i) => {
+      // the index represents the hot path rank
       hotPathMap.set(f.path, i + 1);
     });
 
-    // 4. Find the entry point file for graph building
-    const entryPoint = hotPathResult.entryPoint || hotPathResult.files[0]?.path;
-    if (!entryPoint) {
-      clearTimeout(timeout);
-      return NextResponse.json(
-        { error: "Could not determine entry point" },
-        { status: 400 }
-      );
-    }
+    const maxIn = Math.max(1, ...hotPathResult.files.map((f) => f.inDegree));
 
-    // 5. Fetch entry file content
-    const entryContent = await getContent(entryPoint);
-    if (!entryContent) {
-      clearTimeout(timeout);
-      return NextResponse.json(
-        { error: "Entry file has no content" },
-        { status: 400 }
-      );
-    }
+    // 4. Build ProjectGraph nodes from the global top 100 files
+    const nodes: GraphNode[] = hotPathResult.files.map((f) => {
+      const pageRank = f.inDegree / maxIn;
+      // Define a simple heuristics to derive module name if not directly available
+      const moduleStr = f.path.split("/").length > 2
+        ? f.path.split("/").slice(0, 2).join("/")
+        : (f.path.split("/")[0] || "/");
 
-    // 6. Build dependency graph — reduced depth/nodes for reliability
-    const contentProvider: FileContentProvider = { getContent };
-
-    const depGraph = await buildDependencyGraph(entryPoint, entryContent, {
-      maxDepth: 2,
-      maxNodes: 50,
-      fileIndex,
-      contentProvider,
-    });
-
-    clearTimeout(timeout);
-
-    // 6. Compute PageRank-like scores
-    const inDegreeMap = new Map<string, number>();
-    const outDegreeMap = new Map<string, number>();
-    for (const edge of depGraph.edges) {
-      inDegreeMap.set(edge.target, (inDegreeMap.get(edge.target) || 0) + 1);
-      outDegreeMap.set(edge.source, (outDegreeMap.get(edge.source) || 0) + 1);
-    }
-    const maxIn = Math.max(1, ...inDegreeMap.values());
-
-    // 7. Build ProjectGraph nodes
-    const nodes: GraphNode[] = depGraph.nodes.map((n) => {
-      const inDeg = inDegreeMap.get(n.id) || 0;
-      const outDeg = outDegreeMap.get(n.id) || 0;
-      const pageRank = inDeg / maxIn;
-      const isHotPath = hotPathMap.has(n.filePath);
       return {
-        id: n.filePath,
-        label: n.filePath,
+        id: f.path,
+        label: f.path,
         type: "file" as const,
-        module: n.module,
-        metrics: { pageRank, inDegree: inDeg, outDegree: outDeg },
-        isHotPath,
-        hotPathRank: hotPathMap.get(n.filePath),
+        module: moduleStr,
+        metrics: { pageRank, inDegree: f.inDegree, outDegree: f.outDegree },
+        isHotPath: true, // all top 100 are considered part of the core graph
+        hotPathRank: hotPathMap.get(f.path),
         isCompleted: false,
       };
     });
 
-    // 8. Build edges
-    const edges: GraphEdge[] = depGraph.edges.map((e) => {
-      const srcNode = depGraph.nodes.find((n) => n.id === e.source);
-      const tgtNode = depGraph.nodes.find((n) => n.id === e.target);
-      const srcPath = srcNode?.filePath || e.source;
-      const tgtPath = tgtNode?.filePath || e.target;
-      const srcHot = hotPathMap.has(srcPath);
-      const tgtHot = hotPathMap.has(tgtPath);
-      return {
-        source: srcPath,
-        target: tgtPath,
-        weight: e.weight / Math.max(1, ...depGraph.edges.map((x) => x.weight)),
-        isHotPathEdge: srcHot && tgtHot,
-      };
-    });
+    // 5. Build edges from HotPathResult (global connections)
+    // We only include edges connecting our returned top 100 files.
+    const validNodeIds = new Set(nodes.map(n => n.id));
+    const edges: GraphEdge[] = hotPathResult.edges
+      .filter((e) => validNodeIds.has(e.source) && validNodeIds.has(e.target))
+      .map((e) => {
+        return {
+          source: e.source,
+          target: e.target,
+          weight: 1, // we default to 1 as we don't have symbol-level import breakdown globally
+          isHotPathEdge: true,
+        };
+      });
 
     // 9. Build clusters from modules
     const clusterColors = [

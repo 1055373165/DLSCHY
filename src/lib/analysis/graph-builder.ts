@@ -122,8 +122,11 @@ export function resolveImportPath(
     for (let i = Math.max(0, segments.length - 3); i < segments.length; i++) {
       const suffix = segments.slice(i).join("/");
       for (const f of fileIndex) {
-        if (f.startsWith(suffix + "/") || f === suffix) {
-          return f;
+        if (f.startsWith(suffix + "/")) {
+          return suffix; // Return the directory prefix instead of a single arbitrary file
+        }
+        if (f === suffix) {
+          return f; // Exact file match
         }
       }
     }
@@ -461,7 +464,7 @@ export function toMermaidL1(graph: DependencyGraph, direction: MermaidDirection 
     const lbl = sanitizeLabel(node.label);
     const shape = node.role === "focus" ? `[["${lbl}"]]`
       : node.role === "external" ? `>"${lbl}"]`
-      : `["${lbl}"]`;
+        : `["${lbl}"]`;
     lines.push(`  ${node.id}${shape}`);
   }
 

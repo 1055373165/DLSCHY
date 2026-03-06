@@ -33,6 +33,11 @@ export function LearningProgressBar() {
 
   // Ticking session timer
   const [elapsed, setElapsed] = useState(() => Date.now() - sessionStartTime);
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   useEffect(() => {
     const timer = setInterval(() => {
       setElapsed(Date.now() - sessionStartTime);
@@ -88,7 +93,7 @@ export function LearningProgressBar() {
       {/* Session timer */}
       <div className="flex items-center gap-1 text-[10px] text-slate-400" title="本次学习时长">
         <Clock className="h-3 w-3" />
-        <span>{formatDuration(elapsed)}</span>
+        <span>{mounted ? formatDuration(elapsed) : "刚开始"}</span>
       </div>
 
       {/* Spacer */}

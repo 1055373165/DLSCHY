@@ -55,8 +55,8 @@ const COLORS = {
 };
 
 function nodeRadius(node: SimNode, isCenter: boolean): number {
-  const base = 4 + node.pageRank * 40;
-  const clamped = Math.max(5, Math.min(base, 24));
+  const base = 8 + node.pageRank * 30; // slightly increased base radius for small nodes
+  const clamped = Math.max(8, Math.min(base, 28));
   return isCenter ? clamped * 1.5 : clamped;
 }
 
@@ -273,14 +273,14 @@ export function ForceGraph({ graph, centerFile, filter, onNodeClick, onNodeDoubl
         d3Force
           .forceLink<SimNode, SimLink>(simLinks)
           .id((d) => d.id)
-          .distance(80)
-          .strength((d) => 0.3 + d.weight * 0.5)
+          .distance(120) // Increased from 80 to prevent link overlapping
+          .strength((d) => 0.2 + d.weight * 0.3)
       )
-      .force("charge", d3Force.forceManyBody().strength(-200).distanceMax(400))
+      .force("charge", d3Force.forceManyBody().strength(-400).distanceMax(600)) // Increased repulsion from -200 to -400
       .force("center", d3Force.forceCenter(width / 2, height / 2))
-      .force("collision", d3Force.forceCollide<SimNode>().radius((d) => nodeRadius(d, d.isCenter) + 4))
-      .force("x", d3Force.forceX(width / 2).strength(0.05))
-      .force("y", d3Force.forceY(height / 2).strength(0.05));
+      .force("collision", d3Force.forceCollide<SimNode>().radius((d) => nodeRadius(d, d.isCenter) + 16).iterations(3)) // Added iterations and larger radius for better collision detection
+      .force("x", d3Force.forceX(width / 2).strength(0.02)) // Reduced gravity to let graph expand naturally
+      .force("y", d3Force.forceY(height / 2).strength(0.02));
 
     simulationRef.current = simulation;
 

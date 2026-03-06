@@ -116,9 +116,8 @@ function HotPathBadge({ rank, isCurrentStep, isCompleted }: { rank: number; isCu
   }
   return (
     <span
-      className={`inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ${
-        isCurrentStep ? "h-[22px] w-[22px] animate-pulse ring-2 ring-orange-300" : ""
-      }`}
+      className={`inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ${isCurrentStep ? "h-[22px] w-[22px] animate-pulse ring-2 ring-orange-300" : ""
+        }`}
     >
       {rank}
     </span>
@@ -196,14 +195,26 @@ function FileTreeNode({
   const isCurrentStepFile = !isDir && hotPathFiles.length > 0 && hotPathFiles[currentStep]?.path === node.path;
   const isCompletedFile = !isDir && completedFiles.has(node.path);
 
+  // Check if directory contains any hot path files
+  const hasHotPathDescendant = (n: TreeNode): boolean => {
+    if (n.type === "file") {
+      return getRankForFile(n.path) !== null;
+    }
+    return n.children?.some(hasHotPathDescendant) || false;
+  };
+
+  const isHotFolder = isDir && hasHotPathDescendant(node);
+
   // Compute background style based on status
   let bgClass = "text-slate-700 dark:text-slate-300";
   if (isSelected) {
     bgClass = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300";
-  } else if (fileStatus === "hot-path") {
-    bgClass = "bg-orange-50/60 text-orange-800 dark:bg-orange-950/20 dark:text-orange-300";
+  } else if (fileStatus === "hot-path" || rank !== null) {
+    bgClass = "bg-orange-100/80 text-orange-900 font-medium dark:bg-orange-900/40 dark:text-orange-200 border-l-2 border-orange-500 pl-[6px]";
   } else if (fileStatus === "ai-mentioned") {
     bgClass = "bg-blue-50/60 text-blue-800 dark:bg-blue-950/20 dark:text-blue-300";
+  } else if (isHotFolder) {
+    bgClass = "bg-orange-50/40 text-orange-800 dark:bg-orange-950/10 dark:text-orange-300";
   }
 
   return (

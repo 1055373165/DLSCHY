@@ -102,13 +102,11 @@ function parseGoImports(content: string): ImportEntry[] {
 }
 
 function goImportEntry(path: string): ImportEntry {
-  // Go stdlib has no dots in first segment; external packages have domains
-  const isStdlib = !path.includes(".");
   const isRelative = path.startsWith("./") || path.startsWith("../");
   return {
     raw: path,
     resolved: null, // Go imports are module paths, resolved by graph builder
-    kind: isRelative ? "relative" : isStdlib ? "stdlib" : "external",
+    kind: isRelative ? "relative" : "module",
     symbols: [],
   };
 }
